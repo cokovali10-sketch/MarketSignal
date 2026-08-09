@@ -7,7 +7,8 @@ from sqlalchemy import select
 
 from config.settings import settings
 from core.db import SessionLocal
-from core.models import Item, User
+from core.models import Item, PriceAlert, User
+from core.pricing import nice_price
 from core.tracker import record_price
 from parser.ozon.client import OzonClient
 from parser.wb.client import WbClient
@@ -37,6 +38,38 @@ class Tracker:
             return await self.ozon.get_product_by_sku(item.sku)
         return None
 
+    async def _check_alerts(self, item: Item, data) -> None:
+        """Проверить целевые цены: если цена упала до цели — уведомить и отключить."""
+        if data.price is None:
+            return
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(PriceAlert)
+                .where(PriceAlert.item_id == item.id, PriceAlert.active.is_(True))
+            )
+            alerts = list(result.scalars().all())
+            for alert in alerts:
+                if data.price <= alert.target_price:
+                    alert.active = False
+                    user_result = await session.execute(
+                        select(User).where(User.id == item.user_id)
+                    )
+                    user = user_result.scalar_one_or_none()
+                    if user and self._notify:
+                        try:
+                            await self._notify(
+                                user.tg_id,
+                                f"🔔 <b>Цена достигла цели!</b>\n\n"
+                                f"{item.title or item.sku} ({item.sku})\n"
+                                f"Цена: <b>{nice_price(data.price)}</b> (цель была "
+                                f"{nice_price(alert.target_price)})\n\n"
+                                f"Успейте закупиться! 📦",
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            log.warning("alert notify %s failed: %s", user.tg_id, exc)
+            if alerts:
+                await session.commit()
+
     async def tick(self) -> None:
         """Один проход: обойти все товары, записать цены, разослать изменения."""
         async with SessionLocal() as session:
@@ -60,6 +93,7 @@ class Tracker:
                             await self._notify(user.tg_id, change.message)
                         except Exception as exc:  # noqa: BLE001
                             log.warning("notify %s failed: %s", user.tg_id, exc)
+                await self._check_alerts(item, data)
 
             await session.commit()
 

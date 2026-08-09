@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     )
 
     bot_token: str = ""
+    # Username бота (без @) для реферальных ссылок: t.me/<bot_username>?start=ref_XXXX
+    bot_username: str = "marketsssignal_bot"
     payment_mode: str = "manual"  # manual | auto
     database_url: str = "sqlite+aiosqlite:///data/marketsignal.db"
 
@@ -20,10 +22,12 @@ class Settings(BaseSettings):
     payment_link: str = ""
     # Username администратора (без @) для контакта в меню оплаты
     admin_username: str = ""
-    # Токен Crypto Pay API (@CryptoBot → Разработчикам) для авто-оплаты
-    crypto_pay_token: str = ""
-    # Курс USDT к рублю для расчёта цены в USDT
-    usdt_rate: float = 95.0
+
+    # Telegram Stars: цена тарифа в звёздах (1 ⭐ ≈ 3.6 ₽)
+    stars_starter: int = 85
+    stars_pro: int = 222
+    # Бонусные дни подписки за приведённого друга
+    ref_bonus_days: int = 3
 
     wb_request_interval: float = 1.0
     ozon_request_interval: float = 1.0

@@ -22,7 +22,8 @@ async def main() -> None:
     await init_db()
     log.info("Database ready")
 
-    from bot.handlers.main import bot, dp, notify, tracker
+    import bot.handlers  # noqa: F401  (регистрирует роутеры)
+    from bot.services import bot, dp, notify, tracker
 
     tracker.set_notifier(notify)
     tracker.start()

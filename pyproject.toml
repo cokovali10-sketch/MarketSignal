@@ -1,6 +1,6 @@
 [project]
 name = "marketsignal"
-version = "0.1.0"
+version = "1.0.0"
 description = "MarketSignal - аналитика маркетплейсов WB/Ozon для продавцов (Telegram-бот + парсер + подписки)"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,8 +13,7 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "python-dotenv>=1.0",
-    "fastapi>=0.111",
-    "uvicorn>=0.30",
+    "matplotlib>=3.8",
 ]
 
 [project.optional-dependencies]

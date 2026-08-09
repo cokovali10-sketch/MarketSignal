@@ -20,6 +20,8 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tariff: Mapped[str] = mapped_column(String(16), default="free")  # free|starter|pro
     paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ref_code: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    referred_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     @property
@@ -37,6 +39,7 @@ class Item(Base):
     marketplace: Mapped[str] = mapped_column(String(16))  # wb | ozon
     sku: Mapped[str] = mapped_column(String(64), index=True)
     title: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -60,4 +63,28 @@ class Subscription(Base):
     tariff: Mapped[str] = mapped_column(String(16))
     paid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PriceAlert(Base):
+    """Алерт на целевую цену: уведомить, когда цена упадёт до порога."""
+
+    __tablename__ = "price_alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), index=True)
+    target_price: Mapped[float] = mapped_column(Float)
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Referral(Base):
+    """Реферальные связи: кто кого привёл."""
+
+    __tablename__ = "referrals"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    referrer_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    referred_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    rewarded: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
