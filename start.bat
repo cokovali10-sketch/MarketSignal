@@ -14,7 +14,7 @@ if not exist ".venv\Scripts\python.exe" (
 
 echo [2/2] Проверяю зависимости...
 .venv\Scripts\python.exe -m pip install --quiet --upgrade pip
-.venv\Scripts\python.exe -m pip install --quiet -e "."
+.venv\Scripts\python.exe -m pip install --quiet -e .
 
 if not exist "config\.env" (
     copy config\.env.example config\.env >nul

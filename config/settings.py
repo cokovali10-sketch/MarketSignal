@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     payment_link: str = ""
     # Username администратора (без @) для контакта в меню оплаты
     admin_username: str = ""
+    # Токен Crypto Pay API (@CryptoBot → Разработчикам) для авто-оплаты
+    crypto_pay_token: str = ""
+    # Курс USDT к рублю для расчёта цены в USDT
+    usdt_rate: float = 95.0
 
     wb_request_interval: float = 1.0
     ozon_request_interval: float = 1.0

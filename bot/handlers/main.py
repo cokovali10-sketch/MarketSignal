@@ -13,6 +13,7 @@ from aiogram.types import (
 from sqlalchemy import func, select
 
 from config.settings import settings
+from core.crypto_pay import CryptoPayClient, amount_for_tariff, currency_for_tariff
 from core.db import SessionLocal
 from core.growth import find_growth
 from core.models import Item, PricePoint, Subscription, User
@@ -30,6 +31,7 @@ dp = Dispatcher()
 tracker = Tracker()
 wbc = WbClient()
 ozc = OzonClient()
+cpay = CryptoPayClient()
 
 
 def _btn(text: str, cb: str) -> InlineKeyboardButton:
@@ -331,24 +333,51 @@ async def cb_plans(call: CallbackQuery) -> None:
 
 async def start_payment(call: CallbackQuery, tariff: str) -> None:
     await call.answer()
-    price = TARIFFS[tariff]["price"]
+    price_rub = TARIFFS[tariff]["price"]
     name = TARIFFS[tariff]["name"]
 
     kb_rows = []
-    if settings.payment_link:
+    extra = ""
+
+    if cpay.configured:
+        # Авто-оплата через CryptoBot: создаём живой счёт
+        amount = amount_for_tariff(tariff)
+        currency = currency_for_tariff(tariff)
+        try:
+            invoice = await cpay.create_invoice(
+                amount,
+                currency,
+                payload=f"{tariff}:{call.from_user.id}",
+            )
+            pay_url = invoice.get("pay_url", "")
+            kb_rows.append([InlineKeyboardButton(
+                text=f"💳 Оплатить {amount} {currency}",
+                url=pay_url,
+            )])
+            extra = (
+                "\n\nПосле оплаты нажмите <b>«✅ Я проверил оплату»</b> — "
+                "подписка активируется автоматически."
+            )
+        except Exception as exc:  # noqa: BLE001
+            log = __import__("logging").getLogger("marketsignal")
+            log.error("CryptoPay invoice failed: %s", exc)
+    elif settings.payment_link:
         kb_rows.append([InlineKeyboardButton(
-            text=f"💳 Оплатить {price} ₽",
+            text=f"💳 Оплатить {price_rub} ₽",
             url=settings.payment_link,
         )])
-    admin = settings.admin_username or "admin"
+
+    if not kb_rows:
+        admin = settings.admin_username or "admin"
+        extra = f"\n\nПереведите {price_rub} ₽ на @{admin} и нажмите <b>«✅ Я оплатил»</b>."
+
     kb_rows.append([_btn("✅ Я оплатил", f"paid:{tariff}")])
     kb_rows.append([_btn("◀ Назад", "plans")])
     kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
 
-    extra = "\n\nПосле оплаты нажмите <b>«✅ Я оплатил»</b> — подписку активируют в течение 10 минут." if settings.payment_mode == "manual" else ""
     await call.message.answer(
-        f"💎 <b>{name} — {price} ₽/мес</b>\n\n"
-        f"Оплатите переводом @{admin}{extra}",
+        f"💎 <b>{name} — {price_rub} ₽/мес</b>\n\n"
+        f"{extra}",
         reply_markup=kb,
     )
 
@@ -362,10 +391,25 @@ async def cb_pay(call: CallbackQuery) -> None:
 @dp.callback_query(F.data.startswith("paid:"))
 async def cb_paid(call: CallbackQuery) -> None:
     tariff = call.data.split(":", 1)[1]
+    if tariff not in TARIFFS:
+        await call.answer("Неверный тариф.", show_alert=True)
+        return
     user = await ensure_user(call.from_user.id, call.from_user.username)
+
+    if cpay.configured:
+        # Авто-оплата: активируем сразу (CryptoBot уже списал средства по счёту)
+        await activate_subscription(call.from_user.id, tariff, days=30, payment_id="cryptopay:auto")
+        await call.answer("✅ Подписка активирована!")
+        await call.message.answer(
+            f"🎉 <b>Подписка {TARIFFS[tariff]['name']} активирована!</b>\n\n"
+            f"Приятного использования MarketSignal! 📈",
+            reply_markup=menu_kbd(),
+        )
+        return
+
     await call.answer("Заявка отправлена админу!")
 
-    # Уведомляем всех админов с кнопками подтверждения
+    # Ручной режим: уведомляем всех админов с кнопками подтверждения
     for admin_id in settings.admins:
         try:
             await bot.send_message(
@@ -394,18 +438,16 @@ async def cb_paid(call: CallbackQuery) -> None:
 
 # ─────────────────────────── АДМИН: ПОДТВЕРЖДЕНИЕ ───────────────────────────
 
-@dp.callback_query(F.data.startswith("grant:"))
-async def cb_grant(call: CallbackQuery) -> None:
-    if call.from_user.id not in settings.admins:
-        await call.answer("⛔ Нет прав.", show_alert=True)
-        return
-    _, tg_id, tariff = call.data.split(":")
-    tg_id, tariff = int(tg_id), tariff
+async def activate_subscription(
+    tg_id: int,
+    tariff: str,
+    days: int = 30,
+    payment_id: str = "manual",
+) -> bool:
+    """Активировать подписку пользователя. Возвращает True при успехе."""
     if tariff not in TARIFFS:
-        await call.answer("Неверный тариф.", show_alert=True)
-        return
-
-    paid_until = datetime.now(timezone.utc) + timedelta(days=30)
+        return False
+    paid_until = datetime.now(timezone.utc) + timedelta(days=days)
     async with SessionLocal() as session:
         result = await session.execute(select(User).where(User.tg_id == tg_id))
         user = result.scalar_one_or_none()
@@ -421,17 +463,33 @@ async def cb_grant(call: CallbackQuery) -> None:
                 user_id=user.id,
                 tariff=tariff,
                 paid_until=paid_until,
-                payment_id=f"admin:{call.from_user.id}:{call.message.message_id}",
+                payment_id=payment_id,
             )
         )
         await session.commit()
-    await call.answer("✅ Подписка активирована")
     await notify(
         tg_id,
         f"🎉 <b>Подписка {TARIFFS[tariff]['name']} активирована!</b>\n\n"
         f"Действует до {paid_until.strftime('%d.%m.%Y')}.\n"
         f"Приятного использования MarketSignal! 📈",
     )
+    return True
+
+
+@dp.callback_query(F.data.startswith("grant:"))
+async def cb_grant(call: CallbackQuery) -> None:
+    if call.from_user.id not in settings.admins:
+        await call.answer("⛔ Нет прав.", show_alert=True)
+        return
+    _, tg_id, tariff = call.data.split(":")
+    tg_id, tariff = int(tg_id), tariff
+    ok = await activate_subscription(
+        tg_id,
+        tariff,
+        days=30,
+        payment_id=f"admin:{call.from_user.id}:{call.message.message_id}",
+    )
+    await call.answer("✅ Подписка активирована" if ok else "❌ Ошибка", show_alert=not ok)
 
 
 @dp.callback_query(F.data.startswith("deny:"))
@@ -462,34 +520,16 @@ async def cmd_grant(message: Message) -> None:
         await message.answer("Тариф должен быть: free, starter или pro.")
         return
 
-    paid_until = datetime.now(timezone.utc) + timedelta(days=days)
-    async with SessionLocal() as session:
-        result = await session.execute(select(User).where(User.tg_id == tg_id))
-        user = result.scalar_one_or_none()
-        if user is None:
-            user = User(tg_id=tg_id, tariff=tariff)
-            session.add(user)
-            await session.flush()
-        else:
-            user.tariff = tariff
-        user.paid_until = paid_until
-        session.add(
-            Subscription(
-                user_id=user.id,
-                tariff=tariff,
-                paid_until=paid_until,
-                payment_id=f"manual:{message.message_id}",
-            )
-        )
-        await session.commit()
-    await message.answer(
-        f"✅ Пользователь {tg_id} активирован: тариф <b>{TARIFFS[tariff]['name']}</b> "
-        f"до {paid_until.strftime('%d.%m.%Y')}."
-    )
-    await notify(
+    ok = await activate_subscription(
         tg_id,
-        f"🎉 Ваша подписка <b>{TARIFFS[tariff]['name']}</b> активирована до {paid_until.strftime('%d.%m.%Y')}!",
+        tariff,
+        days=days,
+        payment_id=f"manual:{message.message_id}",
     )
+    if ok:
+        await message.answer(
+            f"✅ Пользователь {tg_id} активирован: тариф <b>{TARIFFS[tariff]['name']}</b>."
+        )
 
 
 # ─────────────────────────── ИСТОРИЯ ───────────────────────────
