@@ -1,0 +1,11 @@
+services:
+  marketsignal:
+    build: .
+    container_name: marketsignal
+    restart: unless-stopped
+    env_file:
+      - ./config/.env
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///app/data/marketsignal.db
