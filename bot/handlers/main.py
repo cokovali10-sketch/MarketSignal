@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -29,14 +31,44 @@ tracker = Tracker()
 wbc = WbClient()
 ozc = OzonClient()
 
-BACK = InlineKeyboardButton(text="◀ Назад", callback_data="menu")
-MENU_KBD = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="📦 Мои товары", callback_data="my_items")],
-    [InlineKeyboardButton(text="➕ Добавить товар", callback_data="add_item")],
-    [InlineKeyboardButton(text="🔥 Растущие товары", callback_data="growth")],
-    [InlineKeyboardButton(text="💎 Тарифы / Подписка", callback_data="plans")],
-    [InlineKeyboardButton(text="📈 История цены", callback_data="history")],
-])
+
+def _btn(text: str, cb: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=cb)
+
+
+def menu_kbd() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [_btn("👤 Мой профиль", "profile")],
+        [_btn("📦 Мои товары", "my_items"), _btn("➕ Добавить", "add_item")],
+        [_btn("📈 История цены", "history"), _btn("🔥 Идеи для завоза", "growth")],
+        [_btn("💎 Тарифы / Подписка", "plans")],
+    ])
+
+
+def back_kbd(cb: str = "menu") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[_btn("◀ Назад", cb)]])
+
+
+def plans_kbd() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [_btn("🚀 Starter — 299 ₽/мес", "pay_starter")],
+        [_btn("💎 Pro — 799 ₽/мес", "pay_pro")],
+        [_btn("◀ Назад", "menu")],
+    ])
+
+
+def tariff_status(user: User) -> str:
+    if user.tariff == "pro":
+        return "💎 PRO"
+    if user.tariff == "starter":
+        return "🚀 Starter"
+    return "🆓 Free"
+
+
+def tariff_until(user: User) -> str:
+    if user.paid_until:
+        return f"до {user.paid_until.strftime('%d.%m.%Y')}"
+    return "—"
 
 
 async def ensure_user(tg_id: int, username: str | None = None) -> User:
@@ -61,29 +93,58 @@ async def notify(tg_id: int, text: str) -> None:
         print(f"[notify] failed to {tg_id}: {exc}")
 
 
+# ─────────────────────────── МЕНЮ / ПРОФИЛЬ ───────────────────────────
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     user = await ensure_user(message.from_user.id, message.from_user.username)
-    status = "💎 PRO" if user.tariff == "pro" else ("🚀 Starter" if user.tariff == "starter" else "Бесплатный")
     await message.answer(
-        f"Добро пожаловать в <b>MarketSignal</b>!\n\n"
-        f"Статус: {status}\n\n"
-        f"Я слежу за ценами на Wildberries и Ozon, показываю остатки, "
-        f"отслеживаю конкурентов и подсказываю, что сейчас выгодно завезти.\n\n"
+        f"Добро пожаловать в <b>MarketSignal</b>! 📈\n\n"
+        f"Статус: <b>{tariff_status(user)}</b> {tariff_until(user)}\n\n"
+        f"Слежу за ценами на <b>Wildberries</b> и <b>Ozon</b>, показываю остатки, "
+        f"отслеживаю конкурентов и подсказываю, что выгодно завезти.\n\n"
         f"Выберите действие:",
-        reply_markup=MENU_KBD,
+        reply_markup=menu_kbd(),
     )
 
 
 @dp.message(Command("menu"))
 async def cmd_menu(message: Message) -> None:
-    await message.answer("Меню:", reply_markup=MENU_KBD)
+    await message.answer("Меню:", reply_markup=menu_kbd())
 
 
 @dp.message(Command("now"))
 async def cmd_now(message: Message) -> None:
     await show_my_items(message)
 
+
+@dp.callback_query(F.data == "menu")
+async def cb_menu(call: CallbackQuery) -> None:
+    await call.answer()
+    await call.message.answer("Меню:", reply_markup=menu_kbd())
+
+
+@dp.callback_query(F.data == "profile")
+async def cb_profile(call: CallbackQuery) -> None:
+    await call.answer()
+    async with SessionLocal() as session:
+        user = await ensure_user(call.from_user.id, call.from_user.username)
+        count = await session.execute(
+            select(func.count()).select_from(Item).where(Item.user_id == user.id)
+        )
+        used = count.scalar_one()
+        limit = tariff_limit(user.tariff)
+        await call.message.answer(
+            f"👤 <b>Ваш профиль</b>\n\n"
+            f"Тариф: <b>{tariff_status(user)}</b>\n"
+            f"Активен: {tariff_until(user)}\n"
+            f"Товары: <b>{used}/{limit}</b>\n\n"
+            f"Для расширения лимитов — перейдите к тарифам.",
+            reply_markup=plans_kbd(),
+        )
+
+
+# ─────────────────────────── ТОВАРЫ ───────────────────────────
 
 async def show_my_items(source: Message) -> None:
     async with SessionLocal() as session:
@@ -96,12 +157,13 @@ async def show_my_items(source: Message) -> None:
         if not items:
             await source.answer(
                 "У вас пока нет отслеживаемых товаров.\n"
-                "Нажмите «➕ Добавить товар» и пришлите артикул.",
-                reply_markup=MENU_KBD,
+                "Нажмите «➕ Добавить» и пришлите артикул.",
+                reply_markup=back_kbd(),
             )
             return
 
-        lines = []
+        header = []
+        rows = []
         for it in items:
             last = await session.execute(
                 select(PricePoint)
@@ -110,13 +172,18 @@ async def show_my_items(source: Message) -> None:
                 .limit(1)
             )
             pp = last.scalar_one_or_none()
-            title = (it.title or it.sku)[:40]
+            title = (it.title or it.sku)[:35]
             price = nice_price(pp.price) if pp else "—"
-            stock = f", остатки {pp.stock}" if pp and pp.stock is not None else ""
+            stock = f" · остатки {pp.stock}" if pp and pp.stock is not None else ""
             mp = "WB" if it.marketplace == "wb" else "OZ"
-            lines.append(f"<b>{title}</b>\n  {mp} {it.sku} · {price}{stock}")
+            header.append(f"<b>{title}</b>\n  {mp} {it.sku} · {price}{stock}")
+            rows.append([_btn(f"🗑 {title} ({mp})", f"del_item:{it.id}")])
+        rows.append([_btn("➕ Добавить товар", "add_item")])
+        rows.append([_btn("◀ Назад", "menu")])
+        kbd = InlineKeyboardMarkup(inline_keyboard=rows)
 
-        await source.answer("📦 <b>Ваши товары:</b>\n\n" + "\n\n".join(lines), reply_markup=MENU_KBD)
+        text = "📦 <b>Ваши товары</b>\n\n" + "\n\n".join(header) + "\n\n<i>Нажмите на товар, чтобы удалить:</i>"
+        await source.answer(text, reply_markup=kbd)
 
 
 @dp.callback_query(F.data == "my_items")
@@ -125,62 +192,31 @@ async def cb_my_items(call: CallbackQuery) -> None:
     await show_my_items(call.message)
 
 
+@dp.callback_query(F.data.startswith("del_item:"))
+async def cb_del_item(call: CallbackQuery) -> None:
+    item_id = int(call.data.split(":")[1])
+    async with SessionLocal() as session:
+        result = await session.execute(select(Item).where(Item.id == item_id))
+        item = result.scalar_one_or_none()
+        if item is None:
+            await call.answer("Товар не найден.", show_alert=True)
+            return
+        await session.delete(item)
+        await session.commit()
+    await call.answer("🗑 Удалено")
+    await show_my_items(call.message)
+
+
 @dp.callback_query(F.data == "add_item")
 async def cb_add_item(call: CallbackQuery) -> None:
     await call.answer()
     await call.message.answer(
-        "Пришлите артикул товара.\n\n"
-        "Для <b>Wildberries</b> — артикул (nm): <code>123456789</code>\n"
-        "Для <b>Ozon</b> — артикул продавца (offer_id): <code>abc-123</code>\n\n"
-        "Можно указать площадку: <code>wb 123456789</code> или <code>ozon abc-123</code>"
+        "🔍 <b>Пришлите артикул товара</b>\n\n"
+        "Для <b>Wildberries</b> — число: <code>123456789</code>\n"
+        "Для <b>Ozon</b> — артикул продавца: <code>abc-123</code>\n\n"
+        "Можно указать площадку: <code>wb 123456789</code> или <code>ozon abc-123</code>",
+        reply_markup=back_kbd(),
     )
-
-
-@dp.message(Command("grant"))
-async def cmd_grant(message: Message) -> None:
-    if message.from_user.id not in settings.admins:
-        await message.answer("⛔ Нет прав администратора.")
-        return
-    parts = message.text.split()
-    if len(parts) != 4:
-        await message.answer("Использование: /grant <user_id> <free|starter|pro> <days>")
-        return
-    try:
-        tg_id, tariff, days = int(parts[1]), parts[2].lower(), int(parts[3])
-    except ValueError:
-        await message.answer("Неверные аргументы. Пример: /grant 123456789 starter 30")
-        return
-    if tariff not in TARIFFS:
-        await message.answer("Тариф должен быть: free, starter или pro.")
-        return
-
-    from datetime import datetime, timedelta, timezone
-
-    paid_until = datetime.now(timezone.utc) + timedelta(days=days)
-    async with SessionLocal() as session:
-        result = await session.execute(select(User).where(User.tg_id == tg_id))
-        user = result.scalar_one_or_none()
-        if user is None:
-            user = User(tg_id=tg_id, tariff=tariff)
-            session.add(user)
-            await session.flush()
-        else:
-            user.tariff = tariff
-        user.paid_until = paid_until
-        session.add(
-            Subscription(
-                user_id=user.id,
-                tariff=tariff,
-                paid_until=paid_until,
-                payment_id=f"manual:{message.message_id}",
-            )
-        )
-        await session.commit()
-    await message.answer(
-        f"✅ Пользователь {tg_id} активирован: тариф <b>{TARIFFS[tariff]['name']}</b> "
-        f"до {paid_until.strftime('%d.%m.%Y')}."
-    )
-    await notify(tg_id, f"🎉 Ваша подписка <b>{TARIFFS[tariff]['name']}</b> активирована до {paid_until.strftime('%d.%m.%Y')}!")
 
 
 @dp.message(F.text)
@@ -213,9 +249,7 @@ async def handle_text(message: Message) -> None:
             await message.answer(
                 f"Лимит тарифа <b>{TARIFFS[user.tariff]['name']}</b> — {limit} товаров.\n"
                 "Оформите подписку, чтобы добавить больше.",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton("💎 К тарифам", callback_data="plans")]
-                ]),
+                reply_markup=plans_kbd(),
             )
             return
 
@@ -223,19 +257,19 @@ async def handle_text(message: Message) -> None:
             select(Item).where(Item.user_id == user.id, Item.sku == sku)
         )
         if existing.scalar_one_or_none():
-            await message.answer("Этот товар уже отслеживается.")
+            await message.answer("Этот товар уже отслеживается.", reply_markup=back_kbd("my_items"))
             return
 
         if marketplace == "wb":
             data = await wbc.get_card(sku)
         else:
             data = await ozc.get_product_by_sku(sku) if ozc.configured else None
-            if data is None:
-                # Нет ключа Ozon — всё равно сохраняем, цена появится после настройки ключа
-                data = None
 
         if marketplace == "wb" and data is None:
-            await message.answer("Не нашёл товар на Wildberries. Проверьте артикул.")
+            await message.answer(
+                "Не нашёл товар на Wildberries. Проверьте артикул или подключите прокси в настройках.",
+                reply_markup=back_kbd("my_items"),
+            )
             return
 
         item = Item(user_id=user.id, marketplace=marketplace, sku=sku)
@@ -244,43 +278,221 @@ async def handle_text(message: Message) -> None:
             session.add(item)
             await session.flush()
             from core.tracker import record_price
+
             await record_price(session, item, data)
         else:
             session.add(item)
 
         await session.commit()
         title = (item.title or item.sku)[:40]
-        await message.answer(f"✅ Добавлено: <b>{title}</b> ({'WB' if marketplace=='wb' else 'OZ'})", reply_markup=MENU_KBD)
+        price = nice_price(data.price) if data and data.price else "—"
+        await message.answer(
+            f"✅ <b>Добавлено:</b> {title}\n"
+            f"Цена: {price}\n"
+            f"Площадка: {'WB' if marketplace == 'wb' else 'OZ'}",
+            reply_markup=menu_kbd(),
+        )
 
+
+# ─────────────────────────── РАСТУЩИЕ ТОВАРЫ ───────────────────────────
 
 @dp.callback_query(F.data == "growth")
 async def cb_growth(call: CallbackQuery) -> None:
-    await call.answer("Ищу растущие товары…")
+    await call.answer("Ищу идеи…")
     cards = await wbc.get_catalog("топ продаж", limit=40)
     if not cards:
-        await call.message.answer("Не удалось получить каталог. Попробуйте позже.")
+        await call.message.answer(
+            "Не удалось получить каталог. Возможно, сеть блокирует WB — подключите прокси.",
+            reply_markup=back_kbd(),
+        )
         return
     found = find_growth(cards, top_n=8)
-    lines = ["🔥 <b>Растущие товары:</b>\n"]
+    lines = ["🔥 <b>Идеи для завоза:</b>\n"]
     for c in found:
         price = nice_price(c.price)
         lines.append(f"{c.title[:45]}\n  <code>{c.sku}</code> · {price} · остатки {c.stock}\n  ↳ {c.reason}")
-    await call.message.answer("\n\n".join(lines), reply_markup=MENU_KBD)
+    await call.message.answer("\n\n".join(lines), reply_markup=back_kbd())
 
+
+# ─────────────────────────── ТАРИФЫ / ОПЛАТА ───────────────────────────
 
 @dp.callback_query(F.data == "plans")
 async def cb_plans(call: CallbackQuery) -> None:
     await call.answer()
-    text = (
+    await call.message.answer(
         "💎 <b>Тарифы MarketSignal:</b>\n\n"
-        "🆓 <b>Free</b> — 0 ₽\n  1 товар, 1 отчёт в день\n\n"
-        "🚀 <b>Starter</b> — 299 ₽/мес\n  10 товаров, алерты на изменение цены, история 30 дней\n\n"
-        "💎 <b>Pro</b> — 799 ₽/мес\n  50 товаров, растущие товары, история 90 дней\n\n"
-        "Оплата: напишите администратору @your_admin и пришлите скрин оплаты — "
-        "доступ активируем вручную в течение 10 минут."
+        "🆓 <b>Free</b> — 0 ₽\n  • 1 товар\n  • базовый отчёт\n\n"
+        "🚀 <b>Starter</b> — 299 ₽/мес\n  • 10 товаров\n  • алерты на изменение цены\n  • история 30 дней\n\n"
+        "💎 <b>Pro</b> — 799 ₽/мес\n  • 50 товаров\n  • идеи для завоза\n  • история 90 дней\n\n"
+        "Выберите тариф:",
+        reply_markup=plans_kbd(),
     )
-    await call.message.answer(text, reply_markup=MENU_KBD)
 
+
+async def start_payment(call: CallbackQuery, tariff: str) -> None:
+    await call.answer()
+    price = TARIFFS[tariff]["price"]
+    name = TARIFFS[tariff]["name"]
+
+    kb_rows = []
+    if settings.payment_link:
+        kb_rows.append([InlineKeyboardButton(
+            text=f"💳 Оплатить {price} ₽",
+            url=settings.payment_link,
+        )])
+    admin = settings.admin_username or "admin"
+    kb_rows.append([_btn("✅ Я оплатил", f"paid:{tariff}")])
+    kb_rows.append([_btn("◀ Назад", "plans")])
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
+
+    extra = "\n\nПосле оплаты нажмите <b>«✅ Я оплатил»</b> — подписку активируют в течение 10 минут." if settings.payment_mode == "manual" else ""
+    await call.message.answer(
+        f"💎 <b>{name} — {price} ₽/мес</b>\n\n"
+        f"Оплатите переводом @{admin}{extra}",
+        reply_markup=kb,
+    )
+
+
+@dp.callback_query(F.data.startswith("pay_"))
+async def cb_pay(call: CallbackQuery) -> None:
+    tariff = call.data.split("_", 1)[1]
+    await start_payment(call, tariff)
+
+
+@dp.callback_query(F.data.startswith("paid:"))
+async def cb_paid(call: CallbackQuery) -> None:
+    tariff = call.data.split(":", 1)[1]
+    user = await ensure_user(call.from_user.id, call.from_user.username)
+    await call.answer("Заявка отправлена админу!")
+
+    # Уведомляем всех админов с кнопками подтверждения
+    for admin_id in settings.admins:
+        try:
+            await bot.send_message(
+                admin_id,
+                f"🧾 <b>Заявка на оплату</b>\n\n"
+                f"Пользователь: <a href='tg://user?id={user.tg_id}'>{user.tg_id}</a>\n"
+                f"Тариф: <b>{TARIFFS[tariff]['name']}</b> ({TARIFFS[tariff]['price']} ₽/мес)\n\n"
+                f"Проверьте оплату и подтвердите:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        _btn("✅ Подтвердить", f"grant:{user.tg_id}:{tariff}"),
+                        _btn("❌ Отклонить", f"deny:{user.tg_id}"),
+                    ]
+                ]),
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[admin notify] failed {admin_id}: {exc}")
+
+    await call.message.answer(
+        f"✅ Заявка отправлена!\n\n"
+        f"Администратор проверит оплату и активирует подписку "
+        f"<b>{TARIFFS[tariff]['name']}</b>.\nОбычно это занимает до 10 минут.",
+        reply_markup=menu_kbd(),
+    )
+
+
+# ─────────────────────────── АДМИН: ПОДТВЕРЖДЕНИЕ ───────────────────────────
+
+@dp.callback_query(F.data.startswith("grant:"))
+async def cb_grant(call: CallbackQuery) -> None:
+    if call.from_user.id not in settings.admins:
+        await call.answer("⛔ Нет прав.", show_alert=True)
+        return
+    _, tg_id, tariff = call.data.split(":")
+    tg_id, tariff = int(tg_id), tariff
+    if tariff not in TARIFFS:
+        await call.answer("Неверный тариф.", show_alert=True)
+        return
+
+    paid_until = datetime.now(timezone.utc) + timedelta(days=30)
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.tg_id == tg_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            user = User(tg_id=tg_id, tariff=tariff)
+            session.add(user)
+            await session.flush()
+        else:
+            user.tariff = tariff
+        user.paid_until = paid_until
+        session.add(
+            Subscription(
+                user_id=user.id,
+                tariff=tariff,
+                paid_until=paid_until,
+                payment_id=f"admin:{call.from_user.id}:{call.message.message_id}",
+            )
+        )
+        await session.commit()
+    await call.answer("✅ Подписка активирована")
+    await notify(
+        tg_id,
+        f"🎉 <b>Подписка {TARIFFS[tariff]['name']} активирована!</b>\n\n"
+        f"Действует до {paid_until.strftime('%d.%m.%Y')}.\n"
+        f"Приятного использования MarketSignal! 📈",
+    )
+
+
+@dp.callback_query(F.data.startswith("deny:"))
+async def cb_deny(call: CallbackQuery) -> None:
+    if call.from_user.id not in settings.admins:
+        await call.answer("⛔ Нет прав.", show_alert=True)
+        return
+    _, tg_id = call.data.split(":")
+    await call.answer("❌ Отклонено")
+    await notify(int(tg_id), "❌ К сожалению, оплата не подтверждена. Свяжитесь с администратором.")
+
+
+@dp.message(Command("grant"))
+async def cmd_grant(message: Message) -> None:
+    if message.from_user.id not in settings.admins:
+        await message.answer("⛔ Нет прав администратора.")
+        return
+    parts = message.text.split()
+    if len(parts) != 4:
+        await message.answer("Использование: /grant <user_id> <free|starter|pro> <days>")
+        return
+    try:
+        tg_id, tariff, days = int(parts[1]), parts[2].lower(), int(parts[3])
+    except ValueError:
+        await message.answer("Неверные аргументы. Пример: /grant 123456789 starter 30")
+        return
+    if tariff not in TARIFFS:
+        await message.answer("Тариф должен быть: free, starter или pro.")
+        return
+
+    paid_until = datetime.now(timezone.utc) + timedelta(days=days)
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.tg_id == tg_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            user = User(tg_id=tg_id, tariff=tariff)
+            session.add(user)
+            await session.flush()
+        else:
+            user.tariff = tariff
+        user.paid_until = paid_until
+        session.add(
+            Subscription(
+                user_id=user.id,
+                tariff=tariff,
+                paid_until=paid_until,
+                payment_id=f"manual:{message.message_id}",
+            )
+        )
+        await session.commit()
+    await message.answer(
+        f"✅ Пользователь {tg_id} активирован: тариф <b>{TARIFFS[tariff]['name']}</b> "
+        f"до {paid_until.strftime('%d.%m.%Y')}."
+    )
+    await notify(
+        tg_id,
+        f"🎉 Ваша подписка <b>{TARIFFS[tariff]['name']}</b> активирована до {paid_until.strftime('%d.%m.%Y')}!",
+    )
+
+
+# ─────────────────────────── ИСТОРИЯ ───────────────────────────
 
 @dp.callback_query(F.data == "history")
 async def cb_history(call: CallbackQuery) -> None:
@@ -292,10 +504,10 @@ async def cb_history(call: CallbackQuery) -> None:
         )
         item = result.scalar_one_or_none()
         if item is None:
-            await call.message.answer("Сначала добавьте товар.", reply_markup=MENU_KBD)
+            await call.message.answer("Сначала добавьте товар.", reply_markup=menu_kbd())
             return
         points = await get_history(session, item.id, limit=15)
         await call.message.answer(
             f"Товар: <b>{item.title or item.sku}</b>\n" + render_history(points),
-            reply_markup=MENU_KBD,
+            reply_markup=back_kbd(),
         )

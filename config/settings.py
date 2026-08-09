@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     payment_mode: str = "manual"  # manual | auto
     database_url: str = "sqlite+aiosqlite:///data/marketsignal.db"
 
+    # Ссылка на оплату (ЮMoney/крипта) — показывается при выборе тарифа
+    payment_link: str = ""
+    # Username администратора (без @) для контакта в меню оплаты
+    admin_username: str = ""
+
     wb_request_interval: float = 1.0
     ozon_request_interval: float = 1.0
     parser_concurrency: int = 5
