@@ -1,167 +1,148 @@
-# MarketSignal 📈
+<div align="center">
 
-**Аналитика маркетплейсов для продавцов Wildberries / Ozon.**
+# MarketSignal
 
-Telegram-бот, который следит за ценами на товары, показывает остатки, строит
-графики, ловит момент выгодной цены и подсказывает, что завезти. Монетизация
-через подписки, оплата — в одну кнопку **Telegram Stars** ⭐ (без карт, без
-вебхуков, без KYC).
+### Marketplace Analytics for Wildberries / Ozon Sellers
 
----
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](#)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-20+-green.svg)](#testing)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#docker)
 
-## Возможности (v1.0)
+A Telegram bot that tracks product prices, shows stock levels, builds charts, catches the best moment to buy, and suggests restocking ideas — monetized through **Telegram Stars** with zero external payment providers.
 
-- 📦 **Отслеживание товаров** — артикул WB/Ozon, ссылка или поиск по каталогу WB
-- 🗂 **Карточка товара** — цена, остатки, скидка %, ссылка, заметка, кнопки действий
-- 🔔 **Целевая цена** — «уведоми, когда цена упадёт до 1 500 ₽»
-- 📈 **График цены картинкой** — matplotlib PNG прямо в чат
-- 📊 **История цены** — точки по времени + экспорт в **CSV**
-- 🗒 **Заметки к товару**
-- 🔥 **Идеи для завоза** — эвристика по каталогу WB
-- 💰 **Калькулятор маржи** — комиссии, логистика, чистая прибыль, %
-- 📄 **Дайджест цен** — сводка по всем товарам за неделю
-- 🤝 **Реферальная программа** — +3 дня подписки за каждого оплатившего друга
-- 👤 **Профиль** — тариф, лимиты, реферальная ссылка
-- ⚡ **Авто-проверка** — планировщик каждые 30 мин + ручное «Обновить»
-- 🛠 **Админ-панель** — `/stats`, `/grant`
+</div>
 
 ---
 
-## Быстрый старт (локально)
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Product Tracking** | Add by WB/Ozon article, direct link, or WB catalog search |
+| **Product Card** | Price, stock levels, discount %, link, notes, action buttons |
+| **Price Alerts** | "Notify when price drops below 1,500 ₽" — push notifications |
+| **Price Chart** | matplotlib PNG chart rendered directly in chat |
+| **Price History** | Timestamped data points + **CSV export** |
+| **Product Notes** | Attach custom notes to any tracked item |
+| **Restock Ideas** | Heuristic suggestions from WB catalog analysis |
+| **Margin Calculator** | Commissions, logistics, net profit, % |
+| **Price Digest** | Weekly summary across all tracked products |
+| **Referral Program** | +3 days subscription per paying referral |
+| **User Profile** | Subscription tier, limits, referral link |
+| **Auto-Check** | Background scheduler every 30 min + manual "Refresh" |
+| **Admin Panel** | `/stats`, `/grant` for manual subscription management |
+
+---
+
+## Quick Start
+
+### Local Development
 
 ```bash
-cd D:\PortfolioProjects\MarketSignal
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e ".[dev]"
+git clone https://github.com/yourname/MarketSignal.git
+cd MarketSignal
 
-copy config\.env.example config\.env   # заполните BOT_TOKEN
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate    # Linux/macOS
+
+pip install -e ".[dev]"
+cp config/.env.example config/.env   # fill in BOT_TOKEN
 python main.py
 ```
 
-Бот поднимется и начнёт опрос Telegram + фоновый планировщик проверки цен.
-
-### Docker (VPS / продакшн)
+### Docker (Production)
 
 ```bash
-copy config\.env.example config\.env
+cp config/.env.example config/.env
 docker compose up -d --build
 ```
 
 ---
 
-## Настройка (config/.env)
+## Configuration
 
-| Переменная | Обязательно | Описание |
-|---|---|---|
-| `BOT_TOKEN` | ✅ | Токен от @BotFather |
-| `BOT_USERNAME` | ✅ | Username бота (для реферальных ссылок) |
-| `ADMIN_IDS` | ✅ | Ваш Telegram ID (узнать: @userinfobot) |
-| `DATABASE_URL` | — | По умолчанию `sqlite+aiosqlite:///data/marketsignal.db` |
-| `TRACK_INTERVAL_MIN` | — | Интервал проверки цен (мин), по умолчанию 30 |
-| `STARS_STARTER` / `STARS_PRO` | — | Цена тарифа в ⭐ (по умолчанию 85 / 222) |
-| `REF_BONUS_DAYS` | — | Бонус за друга, по умолчанию 3 дня |
-| `ADMIN_USERNAME` | — | Контакт в меню помощи |
-| `SSL_VERIFY` | — | `false` если WB отдаёт ошибку сертификата |
-| `HTTP_PROXY` | — | Прокси для обхода гео-блока WB |
-| `HTTP_RETRIES` | — | Попытки запроса при 429/5xx, по умолчанию 3 |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `BOT_TOKEN` | **Yes** | Telegram bot token from @BotFather |
+| `BOT_USERNAME` | **Yes** | Bot username (for referral links) |
+| `ADMIN_IDS` | **Yes** | Your Telegram ID (find via @userinfobot) |
+| `DATABASE_URL` | No | Default: `sqlite+aiosqlite:///data/marketsignal.db` |
+| `TRACK_INTERVAL_MIN` | No | Check interval in minutes (default: 30) |
+| `STARS_STARTER` / `STARS_PRO` | No | Tier price in Telegram Stars (default: 85/222) |
+| `REF_BONUS_DAYS` | No | Referral bonus days (default: 3) |
+| `SSL_VERIFY` | No | `false` if WB returns certificate errors |
+| `HTTP_PROXY` | No | Proxy for WB geo-block bypass |
+| `HTTP_RETRIES` | No | Retries on 429/5xx (default: 3) |
 
-### ⚠️ Гео-блокировка Wildberries
-
-WB закрывает доступ к своему API с **не-российских IP** (включая Казахстан):
-`403/404/429/498`. Проверено — даже из KZ запросы к `card.wb.ru` возвращают `403`.
-Чтобы парсер работал в проде, запустите бота на **российском VPS** или укажите
-российский прокси в `HTTP_PROXY`. Локально для разработки это не требуется.
+> **⚠️ Geo-blocking:** Wildberries blocks non-Russian IPs with `403/404/429/498`. For production, deploy on a Russian VPS or configure `HTTP_PROXY`.
 
 ---
 
-## Оплата (Telegram Stars ⭐)
+## Payment (Telegram Stars)
 
-Подписки оплачиваются звёздами внутри Telegram — **не нужны ни карты, ни
-вебхуки, ни внешние платёжки**:
+Payments happen entirely inside Telegram — no cards, no webhooks, no external payment providers:
 
-1. Клиент жмёт «💎 Тарифы» → выбирает Starter/Pro
-2. Telegram открывает платёж в звёздах — один тап «Оплатить»
-3. Бот автоматически активирует подписку (`successful_payment`)
-4. Звёзды приходят на баланс вашего бота → вывод через Fragment (TON) или
-   прямое использование внутри Telegram
+1. User taps "💎 Tariffs" → selects Starter/Pro
+2. Telegram opens star payment — one tap to pay
+3. Bot activates subscription automatically (`successful_payment`)
+4. Stars accumulate in your bot balance → withdraw via Fragment (TON) or use for Telegram ads
 
-Курс: ~3.6 ₽ за 1 ⭐ (Starter 299 ₽ ≈ 85⭐, Pro 799 ₽ ≈ 222⭐).
+| Tier | Price | Max Products | Features |
+|------|-------|-------------|----------|
+| **Free** | 0 ₽ | 1 | Basic report, chart |
+| **Starter** | 299 ₽/mo | 10 | Price alerts, target price, notes |
+| **Pro** | 799 ₽/mo | 50 | Restock ideas, margin calculator, CSV |
 
-**Вывод денег:** звёзды выводятся на TON-кошелёк через Fragment, либо
-используются для рекламы внутри Telegram. Это единственный способ монетизации,
-доступный без паспорта/KYC — идеально для старта.
+**Withdrawal:** Stars convert to TON via Fragment (~3.6 ₽ per ⭐). No KYC required.
 
 ---
 
-## Структура проекта
+## Project Structure
 
 ```
 MarketSignal/
-├── main.py                  # точка входа: бот + планировщик
+├── main.py                  # Entry point: bot + scheduler
 ├── config/
-│   ├── settings.py          # настройки (pydantic-settings)
+│   ├── settings.py          # Pydantic-settings configuration
 │   └── .env.example
 ├── bot/
-│   ├── services.py          # общие объекты: bot, dp, клавиатуры, активация подписки
+│   ├── services.py          # Bot, dispatcher, keyboards, subscription activation
 │   └── handlers/
-│       ├── text.py          # единый диспетчер текстового ввода
-│       ├── core.py          # старт, меню, профиль, идеи
-│       ├── items.py         # товары, карточки, график, алерты, CSV
-│       ├── payments.py      # Stars-оплата, рефералка, админ-подтверждение
-│       └── tools.py         # калькулятор маржи, дайджест, поиск, /stats
+│       ├── text.py          # Unified text input dispatcher
+│       ├── core.py          # Start, menu, profile, ideas
+│       ├── items.py         # Products, cards, charts, alerts, CSV
+│       ├── payments.py      # Stars payment, referrals, admin confirmation
+│       └── tools.py         # Margin calculator, digest, search, /stats
 ├── parser/
-│   ├── wb/client.py         # WB: card + search
-│   ├── ozon/client.py       # Ozon: API продавца
-│   └── scheduler.py         # планировщик + проверка алертов
+│   ├── wb/client.py         # Wildberries: card + search
+│   ├── ozon/client.py       # Ozon: seller API
+│   └── scheduler.py         # Background scheduler + alert checker
 ├── core/
 │   ├── models.py            # User, Item, PricePoint, Subscription, PriceAlert, Referral
-│   ├── chart.py             # график цены (matplotlib)
-│   ├── margin.py            # калькулятор маржи
-│   ├── tracker.py           # запись цен, история
-│   ├── pricing.py           # тарифы, форматирование
-│   └── growth.py            # эвристика растущих товаров
-├── assets/avatar.png        # аватарка бота (генератор: tools/make_avatar.py)
-├── marketing/promo.md       # готовые рекламные материалы
-└── tests/                   # pytest (20 тестов)
+│   ├── chart.py             # Price chart (matplotlib)
+│   ├── margin.py            # Margin calculator
+│   ├── tracker.py           # Price recording, history
+│   ├── pricing.py           # Tiers, formatting
+│   └── growth.py            # Growing product heuristic
+├── assets/avatar.png        # Bot avatar
+├── marketing/promo.md       # Ready-made promotional materials
+└── tests/                   # pytest (20 tests)
 ```
 
 ---
 
-## Тарифы и монетизация
-
-| Тариф | Цена | Макс. товаров | Что даёт |
-|---|---|---|---|
-| Free | 0 ₽ | 1 | базовый отчёт, график |
-| Starter | 299 ₽/мес | 10 | алерты «цена упала», целевая цена, заметки |
-| Pro | 799 ₽/мес | 50 | идеи для завоза, калькулятор маржи, CSV |
-
-**Как принимать оплату (полностью автоматически):**
-1. Клиент выбирает тариф → платит ⭐ одной кнопкой в Telegram
-2. Подписка активируется мгновенно — ваше участие не нужно
-3. Звёзды копятся на балансе бота → вывод через Fragment
-
-**Админ-инструменты:** `/stats` (пользователи, подписки, выручка), `/grant <id> <tariff> <days>` (ручная выдача).
-
----
-
-## Реклама
-
-Готовые посты для профильных чатов, описания для @BotFather и план бесплатного
-продвижения — в файле **`marketing/promo.md`**.
-
-Важно: реклама работает через **рекомендации и тематические чаты**, а не спам.
-Спам приведёт к блокировке бота.
-
----
-
-## Тесты
+## Testing
 
 ```bash
 python -m pytest tests -v
 python -m ruff check .
 ```
 
-## Лицензия
+---
 
-MIT.
+## License
+
+MIT
