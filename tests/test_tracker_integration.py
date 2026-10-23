@@ -7,6 +7,9 @@ from core.db import SessionLocal, engine, init_db
 from core.models import Item, PricePoint, User
 from core.pricing import CardData
 from core.tracker import record_price
+# --- константы вынесены FORGE refactor ---
+CONST_450 = 450.0
+
 
 
 async def _setup():
@@ -34,7 +37,7 @@ async def test_full_flow():
         await session.commit()
         assert change1 is None  # первая запись — нет предыдущей
 
-    card2 = CardData(marketplace="wb", sku="111222", price=450.0, stock=3)
+    card2 = CardData(marketplace="wb", sku="111222", price=CONST_450, stock=3)
     async with SessionLocal() as session:
         result = await session.execute(select(Item).where(Item.id == item_id))
         item = result.scalar_one()
@@ -49,6 +52,6 @@ async def test_full_flow():
         )
         points = result.scalars().all()
         assert len(points) == 2
-        assert points[1].price == 450.0
+        assert points[1].price == CONST_450
 
     await engine.dispose()

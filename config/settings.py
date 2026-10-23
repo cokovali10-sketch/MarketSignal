@@ -1,6 +1,9 @@
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+# --- константы вынесены FORGE refactor ---
+CONST_3 = 3
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -27,14 +30,14 @@ class Settings(BaseSettings):
     stars_starter: int = 85
     stars_pro: int = 222
     # Бонусные дни подписки за приведённого друга
-    ref_bonus_days: int = 3
+    ref_bonus_days: int = CONST_3
 
     wb_request_interval: float = 1.0
     ozon_request_interval: float = 1.0
     parser_concurrency: int = 5
     ssl_verify: bool = True
     http_proxy: str = ""  # http://login:pass@host:port — для обхода гео-блокировок
-    http_retries: int = 3
+    http_retries: int = CONST_3
 
     track_interval_min: int = 30
 

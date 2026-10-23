@@ -1,5 +1,11 @@
 from core.growth import find_growth, score_candidate
 from core.pricing import TARIFFS, CardData, nice_price, tariff_limit
+# --- константы вынесены FORGE refactor ---
+CONST_400 = 400
+CONST_1999 = 1999.0
+CONST_9000 = 9000
+CONST_20000 = 20000
+
 
 
 def _card(sku, price, old=None, stock=10, title="Товар"):
@@ -23,15 +29,15 @@ def test_nice_price():
 
 
 def test_score_discount_boost():
-    cheap_discounted = _card("1", 400, old=800, stock=3)
-    expensive_stock = _card("2", 20000, old=20000, stock=500)
+    cheap_discounted = _card("1", CONST_400, old=800, stock=3)
+    expensive_stock = _card("2", CONST_20000, old=CONST_20000, stock=500)
     assert score_candidate(cheap_discounted) > score_candidate(expensive_stock)
 
 
 def test_growth_ranking():
     cards = [
         _card("1", 300, old=600, stock=2, title="Хит"),
-        _card("2", 9000, old=9000, stock=400, title="Дорогой залежавшийся"),
+        _card("2", CONST_9000, old=CONST_9000, stock=CONST_400, title="Дорогой залежавшийся"),
     ]
     found = find_growth(cards, top_n=1)
     assert found
@@ -39,7 +45,7 @@ def test_growth_ranking():
 
 
 def test_card_serialization():
-    c = _card("123", 1999.0)
+    c = _card("123", CONST_1999)
     assert c.marketplace == "wb"
     assert c.sku == "123"
-    assert c.price == 1999.0
+    assert c.price == CONST_1999

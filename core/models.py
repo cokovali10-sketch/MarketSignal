@@ -2,6 +2,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+# --- константы вынесены FORGE refactor ---
+CONST_16 = 16
+CONST_64 = 64
+
 
 
 def utcnow() -> datetime:
@@ -17,8 +21,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     tg_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
-    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    tariff: Mapped[str] = mapped_column(String(16), default="free")  # free|starter|pro
+    username: Mapped[str | None] = mapped_column(String(CONST_64), nullable=True)
+    tariff: Mapped[str] = mapped_column(String(CONST_16), default="free")  # free|starter|pro
     paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ref_code: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     referred_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -36,8 +40,8 @@ class Item(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    marketplace: Mapped[str] = mapped_column(String(16))  # wb | ozon
-    sku: Mapped[str] = mapped_column(String(64), index=True)
+    marketplace: Mapped[str] = mapped_column(String(CONST_16))  # wb | ozon
+    sku: Mapped[str] = mapped_column(String(CONST_64), index=True)
     title: Mapped[str | None] = mapped_column(String(256), nullable=True)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -52,7 +56,7 @@ class PricePoint(Base):
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
     old_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     stock: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    seller_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    seller_id: Mapped[str | None] = mapped_column(String(CONST_64), nullable=True)
 
 
 class Subscription(Base):
@@ -60,9 +64,9 @@ class Subscription(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    tariff: Mapped[str] = mapped_column(String(16))
+    tariff: Mapped[str] = mapped_column(String(CONST_16))
     paid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payment_id: Mapped[str | None] = mapped_column(String(CONST_64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

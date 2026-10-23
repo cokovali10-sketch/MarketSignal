@@ -15,6 +15,9 @@ from core.db import SessionLocal
 from core.margin import calculate_margin, parse_margin_input
 from core.models import Item, PriceAlert
 from core.pricing import nice_price
+# --- константы вынесены FORGE refactor ---
+CONST_4 = 4
+
 
 router = Router()
 
@@ -116,7 +119,7 @@ async def _calc_margin(message: Message) -> None:
         await message.answer(error)
         return
     result = calculate_margin(values[0], values[1], values[2], values[3],
-                              values[4] if len(values) > 4 else 0.0)
+                              values[CONST_4] if len(values) > CONST_4 else 0.0)
     verdict = ""
     if result.margin_pct >= 25:
         verdict = "🟢 <b>Отличная маржа!</b>"

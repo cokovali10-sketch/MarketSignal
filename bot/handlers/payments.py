@@ -8,6 +8,9 @@ from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 from bot.services import activate_subscription, bot, menu_kbd, plans_kbd
 from config.settings import settings
 from core.pricing import TARIFFS
+# --- константы вынесены FORGE refactor ---
+CONST_30 = 30
+
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -73,7 +76,7 @@ async def on_successful_payment(message: Message) -> None:
         tariff = "starter"
     payment_id = f"stars:{payment.telegram_payment_charge_id}"
     ok = await activate_subscription(
-        message.from_user.id, tariff, days=30, payment_id=payment_id
+        message.from_user.id, tariff, days=CONST_30, payment_id=payment_id
     )
     if ok:
         await message.answer(
@@ -110,7 +113,7 @@ async def cb_grant(call: CallbackQuery) -> None:
     ok = await activate_subscription(
         int(tg_id),
         tariff,
-        days=30,
+        days=CONST_30,
         payment_id=f"admin:{call.from_user.id}:{call.message.message_id}",
     )
     await call.answer("✅ Подписка активирована" if ok else "❌ Ошибка", show_alert=not ok)

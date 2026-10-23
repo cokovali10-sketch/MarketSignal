@@ -8,6 +8,10 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import MaxNLocator  # noqa: E402
+# --- константы вынесены FORGE refactor ---
+CONST_4 = 4
+CONST_8 = 8
+
 
 
 def render_chart(points) -> bytes:
@@ -21,8 +25,8 @@ def render_chart(points) -> bytes:
     times = [p.ts for p in points]
     prices = [p.price if p.price is not None else 0 for p in points]
 
-    fig, ax = plt.subplots(figsize=(8, 4), dpi=110)
-    ax.plot(times, prices, marker="o", color="#2f80ed", linewidth=2.2, markersize=4)
+    fig, ax = plt.subplots(figsize=(CONST_8, CONST_4), dpi=110)
+    ax.plot(times, prices, marker="o", color="#2f80ed", linewidth=2.2, markersize=CONST_4)
 
     min_p, max_p = min(prices), max(prices)
     pad = max((max_p - min_p) * 0.1, 1.0)
@@ -34,9 +38,9 @@ def render_chart(points) -> bytes:
             f"{y:,.0f}".replace(",", " "),
             (x, y),
             textcoords="offset points",
-            xytext=(0, 8),
+            xytext=(0, CONST_8),
             ha="center",
-            fontsize=8,
+            fontsize=CONST_8,
             color="#333",
         )
 

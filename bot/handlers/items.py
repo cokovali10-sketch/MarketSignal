@@ -23,6 +23,9 @@ from core.db import SessionLocal
 from core.models import Item, PriceAlert, PricePoint
 from core.pricing import TARIFFS, nice_price, tariff_limit
 from core.tracker import get_history, record_price
+# --- константы вынесены FORGE refactor ---
+CONST_30 = 30
+
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -143,7 +146,7 @@ async def show_my_items(source: Message) -> None:
         rows = []
         for it in items:
             pp = await _last_point(session, it.id)
-            title = (it.title or it.sku)[:30]
+            title = (it.title or it.sku)[:CONST_30]
             price = nice_price(pp.price) if pp else "—"
             mp = "WB" if it.marketplace == "wb" else "OZ"
             rows.append([
@@ -279,7 +282,7 @@ async def cb_chart(call: CallbackQuery) -> None:
         if item is None:
             await call.message.answer("Товар не найден.")
             return
-        points = await get_history(session, item.id, limit=30)
+        points = await get_history(session, item.id, limit=CONST_30)
         if len(points) < 2:
             await call.message.answer("Пока мало данных для графика (нужно минимум 2 точки).")
             return
